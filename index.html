@@ -1,81 +1,238 @@
 <!DOCTYPE html>
-<html>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-	<head>
-		<title>CDN.KUMOCHAN.COM - File Explorer (from cubiclesoft/js-fileexplorer)</title>
-	</head>
 
-	<link rel="stylesheet" type="text/css" href="file-explorer.css">
-	<script type="text/javascript" src="file-explorer.js"></script>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-	<div id="filemanager"></div>
+```
+<title>KUMOCHAN CDN</title>
 
-	<div id="filemanager" style="height: 50vh; max-height: 400px; position: relative;"></div>
-	<script type="text/javascript">
-	(function() {
-		var elem = document.getElementById('filemanager');
-	
-		var options = {
-			initpath: [
-				[ '', 'Projects (/)', { canmodify: false } ]
-			],
-	
-			onrefresh: function(folder, required) {
-				// Optional:  Ignore non-required refresh requests.  By default, folders are refreshed every 5 minutes so the widget has up-to-date information.
-	//			if (!required)  return;
-	
-				// Maybe notify a connected WebSocket here to watch the folder on the server for changes.
-				if (folder === this.GetCurrentFolder())
-				{
-				}
-	
-				// Make a call to your server here to get some entries to diplay.
-				// this.PrepareXHR(options) could be useful for doing that.  Example:
-	
-				var $this = this;
-	
-				var xhr = new this.PrepareXHR({
-					url: '/yourapp/',
-					params: {
-						action: 'file_explorer_refresh',
-						path: JSON.stringify(folder.GetPathIDs()),
-						xsrftoken: 'asdfasdf'
-					},
-					onsuccess: function(e) {
-						var data = JSON.parse(e.target.response);
-	console.log(data);
-	
-						if (data.success)  folder.SetEntries(data.entries);
-						else if (required)  $this.SetNamedStatusBarText('folder', $this.EscapeHTML('Failed to load folder.  ' + data.error));
-					},
-					onerror: function(e) {
-						// Maybe output a nice message if the request fails for some reason.
-	//					if (required)  $this.SetNamedStatusBarText('folder', 'Failed to load folder.  Server error.');
-	
-	console.log(e);
-					}
-				});
-	
-				xhr.Send();
-			},
-	
-			// This will be covered in a moment...
-	//		onrename: function(renamed, folder, entry, newname) {
-	//		},
-		};
-	
-		var fe = new window.FileExplorer(elem, options);
-	})();
-	</script>
+<!-- CubicleSoft FileExplorer -->
+<link
+    rel="stylesheet"
+    type="text/css"
+    href="file-explorer/file-explorer.css"
+>
 
-	<style type="text/css">
-		body { font-family: Verdana, Arial, Helvetica, sans-serif; position: relative; color: #222222; font-size: 1.0em; }
+<script
+    type="text/javascript"
+    src="file-explorer/file-explorer.js">
+</script>
 
-		html.embed, html.embed body { padding: 0; margin: 0; }
-		html.embed p { padding: 0; margin: 0; display: none; }
+<style>
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+    }
 
-		#filemanager { height: 50vh; max-height: 400px; position: relative; }
-		html.embed #filemanager { height: 100vh; }
-	</style>
+    #filemanager {
+        width: 100%;
+        height: 100vh;
+        position: relative;
+    }
+</style>
+```
+
+</head>
+
+<body>
+
+<div id="filemanager"></div>
+
+<script>
+(function() {
+    const GITHUB_OWNER = "imKUMOCHAN";
+    const GITHUB_REPO  = "cdn";
+    const GITHUB_BRANCH = "main";
+
+    const CDN_BASE = "https://cdn.kumochan.com/";
+
+    const API_BASE =
+        "https://api.github.com/repos/" +
+        encodeURIComponent(GITHUB_OWNER) +
+        "/" +
+        encodeURIComponent(GITHUB_REPO) +
+        "/contents/";
+
+    function encodePath(path) {
+        return path
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/");
+    }
+
+    function getCDNURL(path) {
+        if (!path) {
+            return CDN_BASE;
+        }
+
+        return CDN_BASE + encodePath(path);
+    }
+
+    async function getDirectory(path) {
+
+        const url =
+            API_BASE +
+            encodePath(path) +
+            "?ref=" +
+            encodeURIComponent(GITHUB_BRANCH);
+
+        const response = await fetch(url, {
+            headers: {
+                "Accept": "application/vnd.github+json"
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                "GitHub API returned HTTP " + response.status
+            );
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data)) {
+            throw new Error(
+                "GitHub did not return a directory."
+            );
+        }
+
+        return data;
+    }
+
+    function convertEntries(items) {
+        return items.map(function(item) {
+            const isFolder = item.type === "dir";
+            return {
+                name: item.name,
+                type: isFolder
+                    ? "folder"
+                    : "file",
+                id: item.path,
+                hash: item.path,
+                size: isFolder
+                    ? undefined
+                    : item.size,
+                tooltip:
+                    isFolder
+                        ? "Folder"
+                        : (
+                            "File\n" +
+                            "Size: " +
+                            formatBytes(item.size || 0)
+                        ),
+                url: getCDNURL(item.path)
+            };
+        });
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes) {
+            return "0 B";
+        }
+        const units = [
+            "B",
+            "KB",
+            "MB",
+            "GB",
+            "TB"
+        ];
+
+        let i = 0;
+        let value = bytes;
+
+        while (value >= 1024 && i < units.length - 1) {
+            value /= 1024;
+            i++;
+        }
+        return value.toFixed(
+            i === 0 ? 0 : 2
+        ) + " " + units[i];
+    }
+
+    const elem =
+        document.getElementById("filemanager");
+    const options = {
+        initpath: [
+            [
+                "",
+                "KUMOCHAN CDN",
+                {
+                    canmodify: false
+                }
+            ]
+        ],
+        onrefresh: function(folder, required) {
+
+            const explorer = this;
+
+            const pathIDs =
+                folder.GetPathIDs();
+            let path = "";
+
+            if (pathIDs.length > 1) {
+                path = pathIDs
+                    .slice(1)
+                    .map(function(part) {
+                        return part[0];
+                    })
+                    .join("/");
+            }
+            getDirectory(path)
+                .then(function(items) {
+                    const entries =
+                        convertEntries(items);
+                    folder.SetEntries(entries);
+                })
+                .catch(function(error) {
+                    console.error(
+                        "Failed to load directory:",
+                        error
+                    );
+                    if (required) {
+                        explorer.SetNamedStatusBarText(
+                            "folder",
+                            explorer.EscapeHTML(
+                                "Failed to load folder: " +
+                                error.message
+                            )
+                        );
+                    }
+                });
+        },
+        onopenfile: function(folder, entry) {
+            if (!entry.url) {
+                return;
+            }
+            window.open(
+                entry.url,
+                "_blank"
+            );
+        },
+        tools: {
+            new_folder: false,
+            new_file: false,
+            upload: false,
+            download: false,
+            copy: false,
+            paste: false,
+            cut: false,
+            delete: false,
+            item_checkboxes: false
+        }
+    };
+    const explorer =
+        new window.FileExplorer(
+            elem,
+            options
+        );
+
+})();
+</script>
+
+</body>
 </html>
